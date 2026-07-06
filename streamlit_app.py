@@ -57,6 +57,148 @@ def db_connect():
     return conn
 
 
+
+
+def qident(name: str) -> str:
+    return '"' + str(name).replace('"', '""') + '"'
+
+
+def table_columns(conn, table: str) -> set[str]:
+    try:
+        return {row[1] for row in conn.execute(f"PRAGMA table_info({qident(table)})").fetchall()}
+    except Exception:
+        return set()
+
+
+def ensure_column(conn, table: str, column: str, definition: str):
+    cols = table_columns(conn, table)
+    if column not in cols:
+        conn.execute(f"ALTER TABLE {qident(table)} ADD COLUMN {qident(column)} {definition}")
+
+
+def copy_legacy_column(conn, table: str, old: str, new: str):
+    cols = table_columns(conn, table)
+    if old in cols and new in cols and old != new:
+        conn.execute(
+            f"UPDATE {qident(table)} SET {qident(new)} = COALESCE(NULLIF({qident(new)}, ''), {qident(old)}) "
+            f"WHERE {qident(old)} IS NOT NULL AND TRIM(CAST({qident(old)} AS TEXT)) != ''"
+        )
+
+
+def migrate_schema(conn):
+    # Eski/yarım kurulmuş veritabanlarında eksik kolon varsa uygulama patlamasın diye otomatik tamamlar.
+    specs = {
+        "users": [
+            ("username", "TEXT DEFAULT ''"),
+            ("password_hash", "TEXT DEFAULT ''"),
+            ("role", "TEXT DEFAULT 'Admin'"),
+            ("active", "INTEGER NOT NULL DEFAULT 1"),
+            ("created_at", "TEXT DEFAULT ''"),
+        ],
+        "firms": [
+            ("firm_name", "TEXT DEFAULT ''"),
+            ("branch", "TEXT DEFAULT ''"),
+            ("contact_name", "TEXT DEFAULT ''"),
+            ("phone", "TEXT DEFAULT ''"),
+            ("address", "TEXT DEFAULT ''"),
+            ("tax_no", "TEXT DEFAULT ''"),
+            ("tax_office", "TEXT DEFAULT ''"),
+            ("note", "TEXT DEFAULT ''"),
+            ("active", "INTEGER NOT NULL DEFAULT 1"),
+            ("created_at", "TEXT DEFAULT ''"),
+        ],
+        "products": [
+            ("product_name", "TEXT DEFAULT ''"),
+            ("model", "TEXT DEFAULT ''"),
+            ("color", "TEXT DEFAULT ''"),
+            ("category", "TEXT DEFAULT ''"),
+            ("unit_price", "REAL NOT NULL DEFAULT 0"),
+            ("stock", "INTEGER NOT NULL DEFAULT 0"),
+            ("note", "TEXT DEFAULT ''"),
+            ("active", "INTEGER NOT NULL DEFAULT 1"),
+            ("created_at", "TEXT DEFAULT ''"),
+        ],
+        "orders": [
+            ("order_no", "TEXT DEFAULT ''"),
+            ("firm_id", "INTEGER"),
+            ("firm_name_snapshot", "TEXT DEFAULT ''"),
+            ("branch_snapshot", "TEXT DEFAULT ''"),
+            ("order_date", "TEXT DEFAULT ''"),
+            ("delivery_date", "TEXT DEFAULT ''"),
+            ("status", "TEXT DEFAULT 'Sipariş Alındı'"),
+            ("payment_status", "TEXT DEFAULT 'Bekliyor'"),
+            ("shipping_note", "TEXT DEFAULT ''"),
+            ("general_note", "TEXT DEFAULT ''"),
+            ("created_by", "TEXT DEFAULT 'admin'"),
+            ("total_amount", "REAL NOT NULL DEFAULT 0"),
+            ("created_at", "TEXT DEFAULT ''"),
+        ],
+        "order_items": [
+            ("order_id", "INTEGER"),
+            ("product_id", "INTEGER"),
+            ("product_name_snapshot", "TEXT DEFAULT ''"),
+            ("model_snapshot", "TEXT DEFAULT ''"),
+            ("color_snapshot", "TEXT DEFAULT ''"),
+            ("quantity", "INTEGER NOT NULL DEFAULT 1"),
+            ("unit_price", "REAL NOT NULL DEFAULT 0"),
+            ("line_total", "REAL NOT NULL DEFAULT 0"),
+            ("note", "TEXT DEFAULT ''"),
+        ],
+        "payments": [
+            ("order_id", "INTEGER"),
+            ("payment_date", "TEXT DEFAULT ''"),
+            ("amount", "REAL NOT NULL DEFAULT 0"),
+            ("method", "TEXT DEFAULT ''"),
+            ("note", "TEXT DEFAULT ''"),
+            ("created_at", "TEXT DEFAULT ''"),
+        ],
+    }
+    for table, columns in specs.items():
+        if table_columns(conn, table):
+            for col, definition in columns:
+                ensure_column(conn, table, col, definition)
+
+    # Bazı eski sürümlerde farklı kolon adları denenmiş olabilir; varsa yeni şemaya kopyalar.
+    firm_legacy = {
+        "name": "firm_name", "Firma": "firm_name", "Firma_Adi": "firm_name", "Firma Adı": "firm_name",
+        "sube": "branch", "Şube": "branch", "Sube": "branch",
+        "yetkili": "contact_name", "Yetkili": "contact_name", "Yetkili_Kisi": "contact_name",
+        "telefon": "phone", "Telefon": "phone",
+        "adres": "address", "Adres": "address",
+        "vergi_no": "tax_no", "VKN": "tax_no", "Vergi_No": "tax_no",
+        "vergi_dairesi": "tax_office", "Vergi_Dairesi": "tax_office",
+        "durum": "active", "Aktif": "active",
+        "kayit_tarihi": "created_at", "Kayıt_Tarihi": "created_at",
+    }
+    product_legacy = {
+        "urun_adi": "product_name", "Ürün": "product_name", "Urun_Adi": "product_name",
+        "kategori": "category", "Kategori": "category",
+        "renk": "color", "Renk": "color",
+        "birim_fiyat": "unit_price", "Birim_Fiyat": "unit_price",
+        "stok": "stock", "Stok": "stock",
+        "durum": "active", "Aktif": "active",
+    }
+    for old, new in firm_legacy.items():
+        copy_legacy_column(conn, "firms", old, new)
+    for old, new in product_legacy.items():
+        copy_legacy_column(conn, "products", old, new)
+
+    # Boş created_at alanlarını doldur.
+    for table in ["users", "firms", "products", "orders", "payments"]:
+        cols = table_columns(conn, table)
+        if "created_at" in cols:
+            conn.execute(f"UPDATE {qident(table)} SET created_at=? WHERE created_at IS NULL OR created_at=''", (now_str(),))
+    conn.commit()
+
+
+def safe_table(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+    out = df.copy()
+    for col in columns:
+        if col not in out.columns:
+            out[col] = ""
+    return out[columns]
+
+
 def run_sql(sql: str, params=(), fetch: bool = False):
     with closing(db_connect()) as conn:
         cur = conn.execute(sql, params)
@@ -155,6 +297,7 @@ def init_db():
             );
             """
         )
+        migrate_schema(conn)
         exists = conn.execute("SELECT COUNT(*) AS c FROM users WHERE username='admin'").fetchone()["c"]
         if not exists:
             conn.execute(
@@ -210,7 +353,10 @@ def product_label(row) -> str:
 
 
 def read_firms(active_only=False) -> pd.DataFrame:
-    sql = "SELECT * FROM firms"
+    sql = """
+        SELECT id, firm_name, branch, contact_name, phone, address, tax_no, tax_office, note, active, created_at
+        FROM firms
+    """
     if active_only:
         sql += " WHERE active=1"
     sql += " ORDER BY firm_name, branch, id"
@@ -218,7 +364,10 @@ def read_firms(active_only=False) -> pd.DataFrame:
 
 
 def read_products(active_only=False) -> pd.DataFrame:
-    sql = "SELECT * FROM products"
+    sql = """
+        SELECT id, product_name, model, color, category, unit_price, stock, note, active, created_at
+        FROM products
+    """
     if active_only:
         sql += " WHERE active=1"
     sql += " ORDER BY product_name, model, color, id"
@@ -517,7 +666,7 @@ def firms_page():
         view = firms.copy()
         view["active"] = view["active"].map({1: "Aktif", 0: "Pasif"})
         view = view.rename(columns={"id":"ID", "firm_name":"Firma", "branch":"Şube", "contact_name":"Yetkili", "phone":"Telefon", "tax_no":"Vergi No", "tax_office":"Vergi Dairesi", "note":"Not", "active":"Durum", "created_at":"Kayıt Tarihi"})
-        st.dataframe(view[["ID","Firma","Şube","Yetkili","Telefon","Adres","Vergi No","Vergi Dairesi","Durum","Kayıt Tarihi"]], use_container_width=True, hide_index=True, height=330)
+        st.dataframe(safe_table(view, ["ID","Firma","Şube","Yetkili","Telefon","Adres","Vergi No","Vergi Dairesi","Durum","Kayıt Tarihi"]), use_container_width=True, hide_index=True, height=330)
     st.subheader("Firma Düzelt / Sil")
     if firms.empty:
         return
@@ -601,7 +750,7 @@ def products_page():
         view["active"] = view["active"].map({1: "Aktif", 0: "Pasif"})
         view["unit_price"] = view["unit_price"].apply(money)
         view = view.rename(columns={"id":"ID", "product_name":"Ürün", "model":"Model", "color":"Renk", "category":"Kategori", "unit_price":"Birim Fiyat", "stock":"Stok", "note":"Not", "active":"Durum", "created_at":"Kayıt Tarihi"})
-        st.dataframe(view[["ID","Ürün","Model","Renk","Kategori","Birim Fiyat","Stok","Durum","Not","Kayıt Tarihi"]], use_container_width=True, hide_index=True, height=330)
+        st.dataframe(safe_table(view, ["ID","Ürün","Model","Renk","Kategori","Birim Fiyat","Stok","Durum","Not","Kayıt Tarihi"]), use_container_width=True, hide_index=True, height=330)
     st.subheader("Ürün Düzelt / Sil")
     if products.empty:
         return
@@ -874,6 +1023,12 @@ def reports_page():
 def settings_page():
     st.title("Yedek / Ayarlar")
     st.caption("Yedekleme, geri yükleme ve şifre değişimi")
+    st.subheader("Veritabanı Kontrol")
+    if st.button("Veritabanını onar / kolonları tamamla", use_container_width=True):
+        with closing(db_connect()) as conn:
+            migrate_schema(conn)
+        st.success("Veritabanı kontrol edildi ve eksik kolonlar tamamlandı.")
+        st.rerun()
     st.subheader("Yedek İndir")
     c1, c2 = st.columns(2)
     with c1:
