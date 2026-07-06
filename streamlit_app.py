@@ -601,7 +601,6 @@ KNOWN_COLORS = {
     "KIRMIZI", "SARI", "MAVİ", "MAVI", "ANTRASİT", "ANTRASIT", "TURUNCU", "PEMBE", "YEŞİL", "YESIL",
     "GRİ", "GRI", "KREM", "LACİVERT", "LACIVERT", "KAHVERENGİ", "KAHVERENGI",
 }
-KNOWN_COLORS.update({tr_upper(c) for c in OYUNCU_KOLTUGU_COLORS})
 IGNORE_SHEETS = {"dashboard", "özet", "ozet", "listeler", "kullanim", "kullanım", "ürünler", "urunler", "firmalar", "renkler"}
 
 
@@ -609,6 +608,8 @@ def tr_upper(text: str) -> str:
     text = str(text or "").strip()
     trans = str.maketrans({"i":"İ", "ı":"I"})
     return text.translate(trans).upper()
+
+KNOWN_COLORS.update({tr_upper(c) for c in OYUNCU_KOLTUGU_COLORS})
 
 
 def norm_text(text: str) -> str:
