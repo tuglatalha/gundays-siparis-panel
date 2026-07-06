@@ -1,20 +1,28 @@
-# Günday's Home Sipariş Takip - Temiz Başlangıç V2 Fix
+# Günday's Home Sipariş Paneli - V4 Cari Aktarım Revize
 
-Bu sürüm Google Sheets kullanmaz. Veriler uygulamanın kendi SQLite veritabanına kaydedilir.
+Bu sürüm Google Sheets canlı bağlantısı kullanmaz. Veriler uygulamanın kendi SQLite veritabanında tutulur.
+
+## Bu revizede eklendi
+
+- Cari / ürün toplu aktarım ekranı korunur.
+- Oyuncu koltukları için renk listesi sabitlendi:
+  - Siyah
+  - Antrasit
+  - Mavi
+  - Kırmızı
+  - Pembe
+  - Yeşil
+  - Turuncu
+  - Beyaz
+  - Sarı
+- Marka fark etmeksizin ürün adında/modelinde/kategorisinde oyuncu koltuğu, gamer veya gaming geçen ürünlerde bu renk grubu seçilebilir.
+- Aynı isimli ürünler otomatik eşlenir.
+- 0 TL satırlar aktarımda yok sayılır.
+- Aynı ürün farklı firmalara farklı fiyattan satılmışsa satır fiyatı korunur.
 
 ## İlk giriş
 
-- Kullanıcı adı: `admin`
-- Şifre: `admin123`
+- Kullanıcı adı: admin
+- Şifre: admin123
 
-## Bu sürümde düzelen kritik konu
-
-Bazı eski/yarım kurulmuş Streamlit veritabanlarında firma ve ürün tablolarında eksik kolon kalabiliyordu. Bu sürüm açılışta veritabanı şemasını kontrol eder, eksik kolonları tamamlar ve firma/ürün tablolarında KeyError oluşmasını engeller.
-
-## GitHub'a yüklenecek dosyalar
-
-- `streamlit_app.py`
-- `requirements.txt`
-- `runtime.txt`
-- `README.md`
-- `.streamlit/config.toml` varsa yüklenebilir.
+İlk girişten sonra şifreyi değiştir.
