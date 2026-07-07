@@ -1,7 +1,0 @@
-# Günday's Home Sipariş Paneli - Temiz Profesyonel V2
-
-Google Sheets yoktur. Veriler uygulamanın kendi SQLite veritabanında tutulur.
-
-İlk giriş:
-- Kullanıcı adı: admin
-- Şifre: admin123
