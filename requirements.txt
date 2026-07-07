@@ -1,1 +1,18 @@
-streamlit>=1.36.0
+# Günday's Home Sipariş Paneli - Google E-Tablo Sabit Şema
+
+Bu sürüm, şu Google Sheet şemasına birebir sabitlenmiştir:
+
+- FIRMALAR
+- URUNLER
+- RENKLER
+- SIPARISLER
+- SIPARIS_KALEMLERI
+- ODEMELER
+- LISTELER
+
+Önemli: Her sekmede 1. satır başlık/açıklama, 2. satır gerçek sütun başlıklarıdır. Kod 2. satırı okur.
+
+Google Sheet ID koda sabitlenmiştir:
+`16-zf0vR79AuDRo6T4CTJGe7VuwBNLwchYpbhMk2H3SY`
+
+Streamlit Secrets içinde sadece `[gcp_service_account]` bölümü gereklidir. Sheet, bu servis hesabının `client_email` adresiyle Editor olarak paylaşılmalıdır.
