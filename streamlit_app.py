@@ -1,3 +1,0 @@
-streamlit>=1.36.0
-gspread>=6.1.2
-google-auth>=2.30.0
